@@ -3,7 +3,7 @@
 #include <stdlib.h>
 #include <ctype.h>
 
-#include "symbol_table.h"
+#include "table.h"
 #include "errors.h"
 
 #define MAX_LINE_LEN 100
