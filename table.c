@@ -3,6 +3,9 @@
 #include <stdlib.h>
 #include <string.h>
 #include "table.h"
+#include "globals.h"
+#include "table.h"
+
 
 symbol_node *symbol_table = NULL;
 

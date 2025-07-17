@@ -2,25 +2,12 @@
 #include <string.h>
 #include <stdlib.h>
 #include <ctype.h>
-
+#include "globals.h"
 #include "table.h"
 #include "errors.h"
 
-#define MAX_LINE_LEN 100
-#define MAX_LABEL_LEN 31
-#define MAX_DATA_SIZE 1024
 
-/* Global counters */
-int IC = 100; /* Instruction Counter */
-int DC = 0;   /* Data Counter */
 
-/* Data memory segment */
-int data_memory[MAX_DATA_SIZE];
-
-/* Global symbol table head */
-symbol_node *symbol_table = NULL;
-
-/* Reserved words for validation */
 static const char* reserved_words[] = {
     "mov", "cmp", "add", "sub", "not", "clr", "lea",
     "inc", "dec", "jmp", "bne", "red", "prn", "jsr", "rts", "stop",
@@ -28,8 +15,6 @@ static const char* reserved_words[] = {
     "r0", "r1", "r2", "r3", "r4", "r5", "r6", "r7",
     NULL
 };
-
-/* Helper functions */
 
 static int is_reserved_word(const char *word)
 {
@@ -49,13 +34,12 @@ static const char* skip_whitespace(const char *str)
     return str;
 }
 
-/* Validate label according to Maman 14 rules */
 static int validate_label(const char *label)
 {
-    int len = strlen(label);
-    int i;
+    int len, i;
+    len = strlen(label);
 
-    if (len == 0 || len > MAX_LABEL_LEN)
+    if (len == 0 || len > MAX_LABEL_LENGTH)
         return 0;
     if (!isalpha((unsigned char)label[0]))
         return 0;
@@ -69,13 +53,12 @@ static int validate_label(const char *label)
     return 1;
 }
 
-/* Extract label from line if present */
 int detectlabel(const char *line, char *label_name)
 {
     const char *p = skip_whitespace(line);
     int i = 0;
 
-    while (*p && *p != ':' && !isspace((unsigned char)*p) && i < MAX_LABEL_LEN + 1) {
+    while (*p && *p != ':' && !isspace((unsigned char)*p) && i < MAX_LABEL_LENGTH + 1) {
         label_name[i++] = *p++;
     }
     label_name[i] = '\0';
@@ -89,14 +72,14 @@ int detectlabel(const char *line, char *label_name)
     return 0;
 }
 
-/* Detect directive */
 int is_directive(const char *line, char *directive_name)
 {
     const char *p = skip_whitespace(line);
+    int i;
 
     if (*p != '.') return 0;
 
-    int i = 0;
+    i = 0;
     while (*p && !isspace((unsigned char)*p) && i < 9) {
         directive_name[i++] = *p++;
     }
@@ -111,12 +94,12 @@ int is_directive(const char *line, char *directive_name)
     return 0;
 }
 
-/* Handle .data directive */
 void handle_data_directive(const char *line, int line_num)
 {
     const char *p = strstr(line, ".data");
     char num_str[20];
     int i, val;
+    char *endptr;
 
     if (!p) return;
     p += strlen(".data");
@@ -136,7 +119,6 @@ void handle_data_directive(const char *line, int line_num)
             return;
         }
 
-        char *endptr;
         val = (int)strtol(num_str, &endptr, 10);
         if (*endptr != '\0') {
             report_error("Invalid number in .data directive", line_num);
@@ -155,7 +137,6 @@ void handle_data_directive(const char *line, int line_num)
     }
 }
 
-/* Handle .string directive */
 void handle_string_directive(const char *line, int line_num)
 {
     const char *start = strchr(line, '"');
@@ -187,7 +168,6 @@ void handle_string_directive(const char *line, int line_num)
     data_memory[DC++] = 0; /* Null terminator */
 }
 
-/* Update data symbol addresses by adding IC */
 void update_data_symbol_addresses(symbol_node *head)
 {
     while (head) {
@@ -197,20 +177,20 @@ void update_data_symbol_addresses(symbol_node *head)
     }
 }
 
-/* Main first pass function */
 int first_pass(FILE *fp)
 {
-    char line[MAX_LINE_LEN];
-    char label[MAX_LABEL_LEN + 1];
+    char line[MAX_LINE_LENGTH];
+    char label[MAX_LABEL_LENGTH + 1];
     char directive[10];
     int line_num = 0;
     int ret;
     int has_label;
+    int i;
 
     IC = 100;
     DC = 0;
 
-    while (fgets(line, MAX_LINE_LEN, fp)) {
+    while (fgets(line, MAX_LINE_LENGTH, fp)) {
         line_num++;
 
         if (line[0] == ';' || line[0] == '\n')
@@ -233,12 +213,11 @@ int first_pass(FILE *fp)
             else if (strcmp(directive, ".string") == 0)
                 handle_string_directive(line, line_num);
             else if (strcmp(directive, ".extern") == 0) {
-                /* Handle extern */
-                char extern_label[MAX_LABEL_LEN + 1];
+                char extern_label[MAX_LABEL_LENGTH + 1];
                 const char *p = line + strlen(".extern");
                 p = skip_whitespace(p);
-                int i = 0;
-                while (*p && !isspace((unsigned char)*p) && i < MAX_LABEL_LEN) {
+                i = 0;
+                while (*p && !isspace((unsigned char)*p) && i < MAX_LABEL_LENGTH) {
                     extern_label[i++] = *p++;
                 }
                 extern_label[i] = '\0';
@@ -250,14 +229,10 @@ int first_pass(FILE *fp)
                 } else {
                     add_symbol(&symbol_table, extern_label, 0, 4);
                 }
-            } else if (strcmp(directive, ".entry") == 0) {
-                /* Entry handled in second pass, optionally check label */
-                /* Skipped here */
             }
             continue;
         }
 
-        /* Instruction line */
         IC++;
     }
 
@@ -265,4 +240,3 @@ int first_pass(FILE *fp)
 
     return 0;
 }
-

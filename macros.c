@@ -1,29 +1,20 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include "data_struct.h"   // contains 'node' definition
-#include "util.h"         // contains 'add_new_file'
+#include "data_struct.h"
+#include "util.h"
+#include <ctype.h>
 
-#define MAX_LINE_LEN 1000
+#define MAX_LINE_LENGTH 1000
 
-/*
- * Checks if a line is the start of a macro.
- * Returns the macro name if found.
- */
 int is_macro_start(const char *line, char *macro_name) {
     return sscanf(line, "macro %s", macro_name) == 1;
 }
 
-/*
- * Checks if a line is the end of a macro.
- */
 int is_macro_end(const char *line) {
     return strstr(line, "endmcro") != NULL;
 }
 
-/*
- * Finds a macro by name in the macro list.
- */
 node *find_macro(node *head, const char *name) {
     while (head) {
         if (strcmp(head->name, name) == 0)
@@ -33,29 +24,57 @@ node *find_macro(node *head, const char *name) {
     return NULL;
 }
 
-/*
- * Performs macro expansion:
- * - Reads .as file
- * - Builds .am file with expanded macros
- */
-int mcro_exec(char *filename) {
-    FILE *in_fp = fopen(filename, "r");
-    if (!in_fp) return 0;
+/* Helper: extract first word after optional label and whitespace */
+void get_opcode_from_line(const char *line, char *opcode) {
+    const char *p = line;
+    int i = 0;
+    opcode[0] = '\0';
 
-    char *out_filename = add_new_file(filename, ".am");
-    FILE *out_fp = fopen(out_filename, "w");
-    if (!out_fp) {
-        fclose(in_fp);
-        return 0;
+    /* skip whitespace */
+    while (*p == ' ' || *p == '\t') p++;
+
+    /* skip label */
+    if (*p && !isspace((unsigned char)*p)) {
+        const char *colon = strchr(p, ':');
+        if (colon && colon < p + 32) { /* reasonable label length */
+            p = colon + 1;
+            while (*p == ' ' || *p == '\t') p++;
+        }
     }
 
-    char line[MAX_LINE_LEN];
+    /* extract first word */
+    while (*p && !isspace((unsigned char)*p) && *p != '\n' && i < 31)
+        opcode[i++] = *p++;
+    opcode[i] = '\0';
+}
+
+int mcro_exec(char *filename) {
+    FILE *in_fp;
+    char *out_filename;
+    FILE *out_fp;
+    char line[MAX_LINE_LENGTH];
     char macro_name[32];
     node *macro_list = NULL;
     node *current_macro = NULL;
     int in_macro = 0;
 
-    while (fgets(line, MAX_LINE_LEN, in_fp)) {
+    in_fp = fopen(filename, "r");
+    if (!in_fp) return 0;
+
+    out_filename = add_new_file(filename, ".am");
+    if (!out_filename) {
+        fclose(in_fp);
+        return 0;
+    }
+
+    out_fp = fopen(out_filename, "w");
+    if (!out_fp) {
+        fclose(in_fp);
+        free(out_filename);
+        return 0;
+    }
+
+    while (fgets(line, MAX_LINE_LENGTH, in_fp)) {
         if (!in_macro && is_macro_start(line, macro_name)) {
             in_macro = 1;
             current_macro = add_to_macro_list(&macro_list, macro_name);
@@ -72,17 +91,20 @@ int mcro_exec(char *filename) {
             continue;
         }
 
-        // Check if the line is a macro call
-        char copy[MAX_LINE_LEN];
-        strcpy(copy, line);
-        char *first_word = strtok(copy, " \t\n");
+        /* Check if the first word after optional label is a macro call */
+        {
+            char opcode[32];
+            node *macro;
+            int i;
 
-        node *macro = find_macro(macro_list, first_word);
-        if (macro) {
-            for (int i = 0; i < macro->line_count; i++)
-                fprintf(out_fp, "%s", macro->lines[i]);
-        } else {
-            fprintf(out_fp, "%s", line);
+            get_opcode_from_line(line, opcode);
+            macro = find_macro(macro_list, opcode);
+            if (macro) {
+                for (i = 0; i < macro->line_count; i++)
+                    fprintf(out_fp, "%s", macro->lines[i]);
+            } else {
+                fprintf(out_fp, "%s", line);
+            }
         }
     }
 

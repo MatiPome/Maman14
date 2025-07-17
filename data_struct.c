@@ -25,7 +25,8 @@ void add_line_to_macro(node *macro, const char *line) {
 void free_macro_list(node *head) {
     node *temp;
     while (head) {
-        for (int i = 0; i < head->line_count; i++) {
+        int i;
+        for (i = 0; i < head->line_count; i++) {
             free(head->lines[i]);
         }
         temp = head;
