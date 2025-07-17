@@ -1,1 +1,0 @@
-/usr/bin/cc -g CMakeFiles/maman14.dir/main.c.o CMakeFiles/maman14.dir/macros.c.o CMakeFiles/maman14.dir/data_struct.c.o CMakeFiles/maman14.dir/util.c.o CMakeFiles/maman14.dir/first_pass.c.o CMakeFiles/maman14.dir/errors.c.o CMakeFiles/maman14.dir/second_pass.c.o CMakeFiles/maman14.dir/code_conversion.c.o CMakeFiles/maman14.dir/table.c.o -o maman14 
