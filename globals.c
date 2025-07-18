@@ -2,5 +2,6 @@
 
 int IC = 100;
 int DC = 0;
+int had_error = 0;
 int instruction_memory[MAX_INSTRUCTIONS];
 int data_memory[MAX_DATA_SIZE];

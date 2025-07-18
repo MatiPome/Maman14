@@ -8,6 +8,7 @@
 
 extern int IC;
 extern int DC;
+extern int had_error;
 extern int instruction_memory[MAX_INSTRUCTIONS];
 extern int data_memory[MAX_DATA_SIZE];
 

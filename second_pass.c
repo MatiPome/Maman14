@@ -81,6 +81,7 @@ extern int instruction_memory[];
 extern int data_memory[];
 extern symbol_node *symbol_table;
 extern FILE *am_file;
+extern int had_error;    /* ← חובה להוסיף */
 
 static FILE *ob_file;
 static FILE *ent_file;
@@ -97,6 +98,9 @@ void second_pass(const char *filename)
     char ob_filename[FILENAME_MAX];
     char ent_filename[FILENAME_MAX];
     char ext_filename[FILENAME_MAX];
+
+    IC = 100;
+    had_error = 0;   /* ← אתחול הדגל בתחילת כל קובץ */
 
     strcpy(ob_filename, filename);
     strcat(ob_filename, ".ob");
@@ -121,6 +125,16 @@ void second_pass(const char *filename)
         process_instruction_line(line, line_num);
     }
 
+    /* בדוק אם הייתה שגיאה */
+    if (had_error) {
+        if (ob_file) fclose(ob_file);
+        remove(ob_filename);  /* מוחק את הקובץ ob אם נוצרה שגיאה */
+        if (ent_file) fclose(ent_file);
+        if (ext_file) fclose(ext_file);
+        printf("----- Done: %s -----\n  ❌ No output file\n", filename);
+        return;
+    }
+
     write_object_file();
     write_entry_file();
 
@@ -129,30 +143,48 @@ void second_pass(const char *filename)
     fclose(ob_file);
 }
 
+/* Process a line from the .am file during the second pass */
 void process_instruction_line(const char *line, int line_num)
 {
     char label[MAX_LABEL_LENGTH];
     char opcode[MAX_OPCODE_LENGTH];
     const char *inst_line = line;
 
+    /* Skip label if present */
     if (extract_label(line, label)) {
         inst_line = skip_label(line);
     }
 
-if (!extract_opcode(inst_line, opcode)) {
-    return; /* Silently skip non-instruction lines */
-}
+    /* Attempt to extract an opcode */
+    if (!extract_opcode(inst_line, opcode)) {
+        /* Not an instruction line, skip */
+        return;
+    }
 
+    /* Extra defensive check: skip if opcode is empty */
+    if (opcode[0] == '\0') {
+        return;
+    }
 
+    /* Extra: skip if line is a comment or empty */
+    if (inst_line[0] == '\0' || inst_line[0] == ';' || inst_line[0] == '\n') {
+        return;
+    }
+
+    printf("DEBUG: line_num=%d | opcode='%s' | inst_line='%s'\n", line_num, opcode, inst_line);
+
+    /* Call encoder only if this is a real instruction! */
     encode_instruction(inst_line, opcode, line_num, ob_file, ext_file);
 }
 
 void write_object_file(void)
 {
     int i;
-    fprintf(ob_file, "%d %d\n", IC, DC);
-    for (i = 0; i < IC; i++) {
+    int start = 100; /* MMN14 convention */
+    fprintf(ob_file, "%d %d\n", IC - start, DC);
+    for (i = start; i < IC; i++) {
         write_encoded_word(ob_file, instruction_memory[i]);
+        printf("instruction_memory[%d]=%04X\n", i, instruction_memory[i]); /* רק הדפסה למסך אם תרצה */
     }
     for (i = 0; i < DC; i++) {
         write_encoded_word(ob_file, data_memory[i]);
