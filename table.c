@@ -7,9 +7,9 @@
 #include "table.h"
 
 
-symbol_node *symbol_table = NULL;
+label_entry *symbol_table = NULL;
 
-symbol_node *find_symbol(symbol_node *head, const char *name) {
+label_entry *find_symbol(label_entry *head, const char *name) {
     while (head) {
         if (strcmp(head->name, name) == 0) {
             return head;
@@ -19,8 +19,8 @@ symbol_node *find_symbol(symbol_node *head, const char *name) {
     return NULL;
 }
 
-void add_symbol(symbol_node **head, const char *name, int address, int attributes) {
-    symbol_node *new_node = (symbol_node *)malloc(sizeof(symbol_node));
+void add_symbol(label_entry **head, const char *name, int address, int attributes) {
+    label_entry *new_node = (label_entry *)malloc(sizeof(label_entry));
     if (!new_node) {
         fprintf(stderr, "Memory allocation error while adding symbol\n");
         exit(1);
@@ -33,8 +33,8 @@ void add_symbol(symbol_node **head, const char *name, int address, int attribute
     *head = new_node;
 }
 
-void free_symbol_table(symbol_node *head) {
-    symbol_node *tmp;
+void free_symbol_table(label_entry *head) {
+    label_entry *tmp;
     while (head) {
         tmp = head;
         head = head->next;

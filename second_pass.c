@@ -12,14 +12,19 @@
 #define MAX_OPCODE_LENGTH 16
 #define MAX_LABEL_LENGTH 32
 
-/* Helper: check if line is empty or comment */
+/*
+ * Returns 1 if the line is empty or a comment, 0 otherwise.
+ */
 int is_empty_or_comment(const char *line) {
     const char *p = line;
     while (*p && (*p == ' ' || *p == '\t')) p++;
     return (*p == ';' || *p == '\n' || *p == '\0');
 }
 
-/* Helper: extract label if present */
+/*
+ * Attempts to extract a label from the beginning of a line.
+ * If found, stores the label in 'label' and returns 1. Otherwise returns 0.
+ */
 int extract_label(const char *line, char *label) {
     int i = 0;
     const char *p = line;
@@ -34,7 +39,10 @@ int extract_label(const char *line, char *label) {
     return 0;
 }
 
-/* Helper: skip label */
+/*
+ * Returns a pointer to the first character after a label (if any).
+ * Skips whitespace after the label.
+ */
 const char *skip_label(const char *line) {
     const char *p = line;
     while (*p && *p != ':') p++;
@@ -43,6 +51,10 @@ const char *skip_label(const char *line) {
     return p;
 }
 
+/*
+ * Extracts the opcode from a line (skipping label if present).
+ * Returns 1 if opcode was found, 0 otherwise.
+ */
 int extract_opcode(const char *line, char *opcode) {
     int i = 0;
     const char *p = line;
@@ -65,7 +77,7 @@ int extract_opcode(const char *line, char *opcode) {
     }
     opcode[i] = '\0';
 
-    /* If this is a directive, macro line, or empty, do not treat as opcode */
+    /* Do not treat directives, macro, or empty as opcode */
     if (opcode[0] == '\0' ||
         opcode[0] == '.'  ||
         strcmp(opcode, "macro") == 0 ||
@@ -75,22 +87,29 @@ int extract_opcode(const char *line, char *opcode) {
     return 1;
 }
 
-extern int IC;
-extern int DC;
-extern int instruction_memory[];
+/* Extern global variables */
+extern int inst_counter;
+extern int data_counter;
+extern int code_array[];
 extern int data_memory[];
-extern symbol_node *symbol_table;
+extern label_entry *symbol_table;
 extern FILE *am_file;
-extern int had_error;    /* ← חובה להוסיף */
+extern int error_flag;  /* Error flag for this file */
 
 static FILE *ob_file;
 static FILE *ent_file;
 static FILE *ext_file;
 
+/* Internal function prototypes */
 void write_object_file(void);
 void write_entry_file(void);
 void process_instruction_line(const char *line, int line_num);
 
+/*
+ * Main function for the assembler's second pass.
+ * Reads each line of the preprocessed (.am) file, encodes instructions,
+ * and writes output files (.ob, .ent, .ext).
+ */
 void second_pass(const char *filename)
 {
     char line[MAX_LINE_LENGTH];
@@ -99,22 +118,19 @@ void second_pass(const char *filename)
     char ent_filename[FILENAME_MAX];
     char ext_filename[FILENAME_MAX];
 
-    IC = 100;
-    had_error = 0;   /* ← אתחול הדגל בתחילת כל קובץ */
+    inst_counter = 100;       /* Reset instruction counter for this file */
+    error_flag = 0;  /* Reset error flag */
 
-    strcpy(ob_filename, filename);
-    strcat(ob_filename, ".ob");
-    strcpy(ent_filename, filename);
-    strcat(ent_filename, ".ent");
-    strcpy(ext_filename, filename);
-    strcat(ext_filename, ".ext");
+    /* Compose output filenames */
+    strcpy(ob_filename, filename); strcat(ob_filename, ".ob");
+    strcpy(ent_filename, filename); strcat(ent_filename, ".ent");
+    strcpy(ext_filename, filename); strcat(ext_filename, ".ext");
 
     ob_file = fopen(ob_filename, "w");
     if (!ob_file) {
         perror("Error opening .ob file");
         return;
     }
-
     ent_file = fopen(ent_filename, "w");
     ext_file = fopen(ext_filename, "w");
 
@@ -125,10 +141,13 @@ void second_pass(const char *filename)
         process_instruction_line(line, line_num);
     }
 
-    /* בדוק אם הייתה שגיאה */
-    if (had_error) {
+    /*
+     * If any errors were detected during the pass,
+     * delete the output files (no output should be produced).
+     */
+    if (error_flag) {
         if (ob_file) fclose(ob_file);
-        remove(ob_filename);  /* מוחק את הקובץ ob אם נוצרה שגיאה */
+        remove(ob_filename);
         if (ent_file) fclose(ent_file);
         if (ext_file) fclose(ext_file);
         printf("----- Done: %s -----\n  ❌ No output file\n", filename);
@@ -143,57 +162,59 @@ void second_pass(const char *filename)
     fclose(ob_file);
 }
 
-/* Process a line from the .am file during the second pass */
+/*
+ * Processes a single line during the second pass.
+ * Skips labels and comments, and passes valid instructions to encode_instruction().
+ */
 void process_instruction_line(const char *line, int line_num)
 {
     char label[MAX_LABEL_LENGTH];
     char opcode[MAX_OPCODE_LENGTH];
     const char *inst_line = line;
 
-    /* Skip label if present */
+    /* If line starts with a label, skip it */
     if (extract_label(line, label)) {
         inst_line = skip_label(line);
     }
 
     /* Attempt to extract an opcode */
     if (!extract_opcode(inst_line, opcode)) {
-        /* Not an instruction line, skip */
-        return;
+        return; /* Not an instruction line */
     }
 
-    /* Extra defensive check: skip if opcode is empty */
-    if (opcode[0] == '\0') {
-        return;
-    }
+    if (opcode[0] == '\0') return;
+    if (inst_line[0] == '\0' || inst_line[0] == ';' || inst_line[0] == '\n') return;
 
-    /* Extra: skip if line is a comment or empty */
-    if (inst_line[0] == '\0' || inst_line[0] == ';' || inst_line[0] == '\n') {
-        return;
-    }
 
-    printf("DEBUG: line_num=%d | opcode='%s' | inst_line='%s'\n", line_num, opcode, inst_line);
 
-    /* Call encoder only if this is a real instruction! */
-    encode_instruction(inst_line, opcode, line_num, ob_file, ext_file);
+    /* Pass instruction line to the encoder for translation to machine code */
+assemble_instruction(inst_line, opcode, line_num);
 }
 
+/*
+ * Writes the object code (.ob) file.
+ * The first line contains the code/data lengths. Each following line is a 10/12/16-bit word.
+ */
 void write_object_file(void)
 {
     int i;
-    int start = 100; /* MMN14 convention */
-    fprintf(ob_file, "%d %d\n", IC - start, DC);
-    for (i = start; i < IC; i++) {
-        write_encoded_word(ob_file, instruction_memory[i]);
-        printf("instruction_memory[%d]=%04X\n", i, instruction_memory[i]); /* רק הדפסה למסך אם תרצה */
+    int start = 100; /* Per MMN14 spec, code starts at address 100 */
+    fprintf(ob_file, "%d %d\n", inst_counter - start, data_counter);
+    for (i = start; i < inst_counter; i++) {
+        write_encoded_word(ob_file, code_array[i]);
+
     }
-    for (i = 0; i < DC; i++) {
+    for (i = 0; i < data_counter; i++) {
         write_encoded_word(ob_file, data_memory[i]);
     }
 }
 
+/*
+ * Writes the entry symbols (if any) to the .ent file.
+ */
 void write_entry_file(void)
 {
-    symbol_node *curr = symbol_table;
+    label_entry *curr = symbol_table;
     while (curr) {
         if (curr->attributes & ENTRY_ATTRIBUTE) {
             fprintf(ent_file, "%s %04d\n", curr->name, curr->address);

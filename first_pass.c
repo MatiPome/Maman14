@@ -6,8 +6,11 @@
 #include "table.h"
 #include "errors.h"
 
-
-
+/* --------------------------------------
+ * Reserved words array
+ * Contains all instruction mnemonics, directives, and register names.
+ * Used to prevent using reserved words as labels.
+ * -------------------------------------- */
 static const char* reserved_words[] = {
     "mov", "cmp", "add", "sub", "not", "clr", "lea",
     "inc", "dec", "jmp", "bne", "red", "prn", "jsr", "rts", "stop",
@@ -16,6 +19,9 @@ static const char* reserved_words[] = {
     NULL
 };
 
+/* --------------------------------------
+ * Returns 1 if 'word' is reserved (cannot be used as a label), 0 otherwise
+ * -------------------------------------- */
 static int is_reserved_word(const char *word)
 {
     int i = 0;
@@ -27,6 +33,10 @@ static int is_reserved_word(const char *word)
     return 0;
 }
 
+/* --------------------------------------
+ * Skips spaces/tabs at the start of a string.
+ * Returns pointer to first non-whitespace character.
+ * -------------------------------------- */
 static const char* skip_whitespace(const char *str)
 {
     while (*str && isspace((unsigned char)*str))
@@ -34,11 +44,17 @@ static const char* skip_whitespace(const char *str)
     return str;
 }
 
+/* --------------------------------------
+ * Checks if a label is valid:
+ * - Must start with a letter.
+ * - Only letters and digits allowed.
+ * - Cannot be a reserved word.
+ * - Must not exceed MAX_LABEL_LENGTH.
+ * Returns 1 if valid, 0 if not.
+ * -------------------------------------- */
 static int validate_label(const char *label)
 {
-    int len, i;
-    len = strlen(label);
-
+    int len = strlen(label), i;
     if (len == 0 || len > MAX_LABEL_LENGTH)
         return 0;
     if (!isalpha((unsigned char)label[0]))
@@ -49,20 +65,26 @@ static int validate_label(const char *label)
     }
     if (is_reserved_word(label))
         return 0;
-
     return 1;
 }
 
+/* --------------------------------------
+ * Checks if a label is present at start of line.
+ * If so, copies the label to label_name and returns 1.
+ * Otherwise returns 0.
+ * -------------------------------------- */
 int detectlabel(const char *line, char *label_name)
 {
     const char *p = skip_whitespace(line);
     int i = 0;
 
-    while (*p && *p != ':' && !isspace((unsigned char)*p) && i < MAX_LABEL_LENGTH + 1) {
+    /* Copy up to ':' or whitespace (limit MAX_LABEL_LENGTH) */
+    while (*p && *p != ':' && !isspace((unsigned char)*p) && i < MAX_LABEL_LENGTH) {
         label_name[i++] = *p++;
     }
     label_name[i] = '\0';
 
+    /* If next char is ':', check if valid label */
     if (*p == ':') {
         if (validate_label(label_name))
             return 1;
@@ -72,14 +94,20 @@ int detectlabel(const char *line, char *label_name)
     return 0;
 }
 
+/* --------------------------------------
+ * Checks if a line starts with a directive (.data, .string, .extern, .entry).
+ * Copies the directive name to directive_name if found.
+ * Returns 1 if it's a directive, 0 otherwise.
+ * -------------------------------------- */
 int is_directive(const char *line, char *directive_name)
 {
     const char *p = skip_whitespace(line);
-    int i;
+    int i = 0;
 
+    /* Directives always start with '.' */
     if (*p != '.') return 0;
 
-    i = 0;
+    /* Copy directive word */
     while (*p && !isspace((unsigned char)*p) && i < 9) {
         directive_name[i++] = *p++;
     }
@@ -94,6 +122,11 @@ int is_directive(const char *line, char *directive_name)
     return 0;
 }
 
+/* --------------------------------------
+ * Parses and stores the numbers from a .data directive into data_memory.
+ * Each number separated by commas.
+ * Sets error_flag=1 if error occurs.
+ * -------------------------------------- */
 void handle_data_directive(const char *line, int line_num)
 {
     const char *p = strstr(line, ".data");
@@ -108,35 +141,48 @@ void handle_data_directive(const char *line, int line_num)
         p = skip_whitespace(p);
         if (!*p) break;
 
+        /* Parse number string */
         i = 0;
         while (*p && *p != ',' && !isspace((unsigned char)*p) && i < 19) {
             num_str[i++] = *p++;
         }
         num_str[i] = '\0';
 
+        /* Error: comma with no number */
         if (i == 0) {
             report_error("Missing number in .data directive", line_num);
+            error_flag = 1;
             return;
         }
 
+        /* Convert string to integer */
         val = (int)strtol(num_str, &endptr, 10);
         if (*endptr != '\0') {
             report_error("Invalid number in .data directive", line_num);
+            error_flag = 1;
             return;
         }
 
-        if (DC >= MAX_DATA_SIZE) {
+        /* Check memory overflow */
+        if (data_counter >= MAX_DATA_SIZE) {
             report_error("Data memory overflow", line_num);
+            error_flag = 1;
             return;
         }
 
-        data_memory[DC++] = val;
+        data_memory[data_counter++] = val;
 
         p = skip_whitespace(p);
-        if (*p == ',') p++;
+        if (*p == ',') p++; /* skip comma */
     }
 }
 
+/* --------------------------------------
+ * Parses a .string directive.
+ * Each character between quotes is stored as an integer in data_memory.
+ * Adds a null terminator (0) at the end.
+ * Sets error_flag=1 if any error occurs.
+ * -------------------------------------- */
 void handle_string_directive(const char *line, int line_num)
 {
     const char *start = strchr(line, '"');
@@ -144,68 +190,89 @@ void handle_string_directive(const char *line, int line_num)
 
     if (!start) {
         report_error("Missing opening quote in .string directive", line_num);
+        error_flag = 1;
         return;
     }
-    start++;
-
+    start++; /* Skip opening quote */
     end = strchr(start, '"');
     if (!end) {
         report_error("Missing closing quote in .string directive", line_num);
+        error_flag = 1;
         return;
     }
 
     while (start < end) {
-        if (DC >= MAX_DATA_SIZE) {
+        if (data_counter >= MAX_DATA_SIZE) {
             report_error("Data memory overflow", line_num);
+            error_flag = 1;
             return;
         }
-        data_memory[DC++] = (int)(*start++);
+        data_memory[data_counter++] = (int)(*start++);
     }
-    if (DC >= MAX_DATA_SIZE) {
+    if (data_counter >= MAX_DATA_SIZE) {
         report_error("Data memory overflow", line_num);
+        error_flag = 1;
         return;
     }
-    data_memory[DC++] = 0; /* Null terminator */
+    data_memory[data_counter++] = 0; /* Add null terminator */
 }
 
-void update_data_symbol_addresses(symbol_node *head)
+/* --------------------------------------
+ * After first pass, adds inst_counter to the address of each data symbol in the symbol table.
+ * Ensures .data locations appear after all code.
+ * -------------------------------------- */
+void update_data_symbol_addresses(label_entry *head)
 {
     while (head) {
-        if ((head->attributes & 2) != 0) /* data attribute */
-            head->address += IC;
+        if ((head->attributes & 2) != 0) /* 2 = data attribute */
+            head->address += inst_counter;
         head = head->next;
     }
 }
 
+/* --------------------------------------
+ * first_pass - Scans the source file for:
+ *   - Labels (and stores them in the symbol table)
+ *   - Data and string directives (fills data_memory)
+ *   - Extern directives (adds extern labels to the table)
+ *   - Skips comments and empty lines
+ *   - Updates inst_counter (Instruction Counter) for each line of code
+ * After the pass, updates addresses of all data labels.
+ * Returns 1 if there were errors, 0 otherwise.
+ * -------------------------------------- */
 int first_pass(FILE *fp)
 {
     char line[MAX_LINE_LENGTH];
     char label[MAX_LABEL_LENGTH + 1];
     char directive[10];
     int line_num = 0;
-    int ret;
-    int has_label;
-    int i;
+    int ret, has_label, i;
 
-    IC = 100;
-    DC = 0;
+    /* Initialize inst_counter, data_counter, error flag */
+    inst_counter = 100;
+    data_counter = 0;
+    error_flag = 0;
 
     while (fgets(line, MAX_LINE_LENGTH, fp)) {
         line_num++;
 
+        /* Ignore comment or empty line */
         if (line[0] == ';' || line[0] == '\n')
             continue;
 
+        /* Detect label (if any) and add to symbol table */
         has_label = detectlabel(line, label);
         if (has_label) {
             if (find_symbol(symbol_table, label)) {
                 report_error("Duplicate label found", line_num);
+                error_flag = 1;
             } else {
-                /* Decide attribute based on next token (simplified: code = 1) */
-                add_symbol(&symbol_table, label, IC, 1);
+                /* Add as code by default (attribute 1) */
+                add_symbol(&symbol_table, label, inst_counter, 1);
             }
         }
 
+        /* Check if line is a directive */
         ret = is_directive(line, directive);
         if (ret) {
             if (strcmp(directive, ".data") == 0)
@@ -217,26 +284,34 @@ int first_pass(FILE *fp)
                 const char *p = line + strlen(".extern");
                 p = skip_whitespace(p);
                 i = 0;
+                /* Parse extern label name */
                 while (*p && !isspace((unsigned char)*p) && i < MAX_LABEL_LENGTH) {
                     extern_label[i++] = *p++;
                 }
                 extern_label[i] = '\0';
 
+                /* Check for validity and duplicates */
                 if (!validate_label(extern_label)) {
                     report_error("Invalid label name in .extern directive", line_num);
+                    error_flag = 1;
                 } else if (find_symbol(symbol_table, extern_label)) {
                     report_error("Label already defined, cannot be extern", line_num);
+                    error_flag = 1;
                 } else {
+                    /* Attribute 4 = extern */
                     add_symbol(&symbol_table, extern_label, 0, 4);
                 }
             }
-            continue;
+            continue; /* Done handling directive, go to next line */
         }
 
-        IC++;
+        /* For instruction/code line, increment inst_counter */
+        inst_counter++;
     }
 
+    /* Update addresses of all data labels to appear after code */
     update_data_symbol_addresses(symbol_table);
 
-    return 0;
+    /* Return error flag status */
+    return error_flag;
 }
