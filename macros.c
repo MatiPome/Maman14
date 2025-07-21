@@ -13,7 +13,7 @@
  * Otherwise, returns 0.
  */
 int is_macro_start(const char *line, char *macro_name) {
-    return sscanf(line, "macro %s", macro_name) == 1;
+    return sscanf(line, "mcro %s", macro_name) == 1;
 }
 
 /*

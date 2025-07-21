@@ -231,6 +231,17 @@ void update_data_symbol_addresses(label_entry *head)
 }
 
 /* --------------------------------------
+ * Helper: Skips over label and colon, returns pointer after label: and any spaces.
+ * -------------------------------------- */
+const char* skip_label_colon(const char *line) {
+    const char *p = line;
+    while (*p && *p != ':') p++;
+    if (*p == ':') p++;
+    while (*p && isspace((unsigned char)*p)) p++;
+    return p;
+}
+
+/* --------------------------------------
  * first_pass - Scans the source file for:
  *   - Labels (and stores them in the symbol table)
  *   - Data and string directives (fills data_memory)
@@ -247,6 +258,7 @@ int first_pass(FILE *fp)
     char directive[10];
     int line_num = 0;
     int ret, has_label, i;
+    const char *after_label;
 
     /* Initialize inst_counter, data_counter, error flag */
     inst_counter = 100;
@@ -262,6 +274,7 @@ int first_pass(FILE *fp)
 
         /* Detect label (if any) and add to symbol table */
         has_label = detectlabel(line, label);
+        after_label = line;
         if (has_label) {
             if (find_symbol(symbol_table, label)) {
                 report_error("Duplicate label found", line_num);
@@ -270,18 +283,19 @@ int first_pass(FILE *fp)
                 /* Add as code by default (attribute 1) */
                 add_symbol(&symbol_table, label, inst_counter, 1);
             }
+            after_label = skip_label_colon(line);
         }
 
-        /* Check if line is a directive */
-        ret = is_directive(line, directive);
+        /* Check if line is a directive (after label, if present) */
+        ret = is_directive(after_label, directive);
         if (ret) {
             if (strcmp(directive, ".data") == 0)
-                handle_data_directive(line, line_num);
+                handle_data_directive(after_label, line_num);
             else if (strcmp(directive, ".string") == 0)
-                handle_string_directive(line, line_num);
+                handle_string_directive(after_label, line_num);
             else if (strcmp(directive, ".extern") == 0) {
                 char extern_label[MAX_LABEL_LENGTH + 1];
-                const char *p = line + strlen(".extern");
+                const char *p = after_label + strlen(".extern");
                 p = skip_whitespace(p);
                 i = 0;
                 /* Parse extern label name */

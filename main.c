@@ -73,6 +73,8 @@ int main(int argc, char *argv[]) {
             cleanup_all();
             continue;
         }
+
+		printf("DEBUG after first_pass: data_counter = %d\n", data_counter);
         rewind(am_file); /* Rewind for second pass to reread from beginning */
 
         /* Step 4: Second pass (generate output files: .ob, .ent, .ext) */

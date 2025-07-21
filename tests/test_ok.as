@@ -1,5 +1,11 @@
-; Simple legal MMN14 program
-MAIN:   mov r3, r5
-        add r2, r1
-        sub r7, r0
+; Test for macros, data, and string
+mcro MY_MACRO
+    add r1, r2
+    sub r3, r4
+endmcro
+
+MAIN:   mov r5, r6
+        MY_MACRO
         stop
+VALUES: .data 7, -7, 42
+MESSAGE: .string "Ok!"

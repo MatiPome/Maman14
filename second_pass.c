@@ -197,6 +197,7 @@ assemble_instruction(inst_line, opcode, line_num);
  */
 void write_object_file(void)
 {
+	printf("DEBUG: in write_object_file, data_counter = %d\n", data_counter);
     int i;
     int start = 100; /* Per MMN14 spec, code starts at address 100 */
     fprintf(ob_file, "%d %d\n", inst_counter - start, data_counter);
