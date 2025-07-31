@@ -8,7 +8,7 @@
 #include "util.h"
 #include <ctype.h>
 
-#define MAX_LINE_LENGTH 100
+
 #define MAX_OPCODE_LENGTH 16
 #define MAX_LABEL_LENGTH 32
 
@@ -96,9 +96,10 @@ extern label_entry *symbol_table;
 extern FILE *am_file;
 extern int error_flag;  /* Error flag for this file */
 
-static FILE *ob_file;
-static FILE *ent_file;
-static FILE *ext_file;
+FILE *ob_file = NULL;
+FILE *ent_file = NULL;
+FILE *ext_file = NULL;
+
 
 /* Internal function prototypes */
 void write_object_file(void);
@@ -197,9 +198,9 @@ assemble_instruction(inst_line, opcode, line_num);
  */
 void write_object_file(void)
 {
-	printf("DEBUG: in write_object_file, data_counter = %d\n", data_counter);
     int i;
     int start = 100; /* Per MMN14 spec, code starts at address 100 */
+    printf("DEBUG: in write_object_file, data_counter = %d\n", data_counter);
     fprintf(ob_file, "%d %d\n", inst_counter - start, data_counter);
     for (i = start; i < inst_counter; i++) {
         write_encoded_word(ob_file, code_array[i]);

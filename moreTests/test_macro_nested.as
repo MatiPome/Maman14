@@ -1,0 +1,9 @@
+macro M1
+M2
+endmacro
+
+macro M2
+mov r1, r2
+endmacro
+
+M1

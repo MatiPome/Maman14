@@ -1,0 +1,4 @@
+macro EMPTY
+endmacro
+
+EMPTY

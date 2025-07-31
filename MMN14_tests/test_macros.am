@@ -1,0 +1,3 @@
+LABEL_A: .data 5
+    mov r3, r1
+    prn r3

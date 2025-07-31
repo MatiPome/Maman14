@@ -1,6 +1,6 @@
 /* code_conversion.c
  * Converts assembly instructions to encoded machine words.
- * C90, explicit comments for every major step.
+ * MMN14, ANSI C (C90) - includes instruction memory overflow check.
  */
 
 #include <stdio.h>
@@ -10,12 +10,32 @@
 #include "globals.h"
 #include "table.h"
 
+/* Externs from other modules */
+extern int inst_counter;
+extern int data_counter;
+extern int code_array[];
+extern int data_memory[];
+extern label_entry *symbol_table;
+extern int error_flag;
+extern FILE *ext_file;  /* For writing to .ext output file */
+
 /* Addressing mode definitions */
 #define ADDR_IMMEDIATE 0 /* #number */
 #define ADDR_DIRECT    1 /* label */
 #define ADDR_REGISTER  3 /* r0 - r7 */
 
-/* Convert opcode name to its numerical value.
+/* Safely store a word in code_array, with overflow protection */
+static int safe_store_code(int word, int line_num) {
+    if (inst_counter >= MAX_INSTRUCTIONS) {
+        printf("Error (line %d): instruction memory overflow (max = %d)\n", line_num, MAX_INSTRUCTIONS);
+        error_flag = 1;
+        return 0; /* failed */
+    }
+    code_array[inst_counter++] = word & 0x3FF; /* 10 bits only */
+    return 1; /* success */
+}
+
+/* Converts an opcode name to its numerical value.
  * Returns -1 if the opcode is unknown. */
 static int get_opcode_value(const char *opcode) {
     if (strcmp(opcode, "mov") == 0) return 0;
@@ -46,8 +66,7 @@ static int get_register(const char *s) {
     return -1;
 }
 
-/* Trims whitespace from both ends of a string in-place.
- * Used to ensure correct parsing of operands. */
+/* Trims whitespace from both ends of a string in-place. */
 static void trim(char *s) {
     char *start = s, *end;
     int len;
@@ -114,7 +133,7 @@ static int get_addressing(const char *operand) {
 }
 
 /* Encodes an instruction:
- * - Writes main instruction word to code_array[inst_counter]
+ * - Writes main instruction word to code_array (using safe_store_code)
  * - Adds extra words for immediate values or direct (label) addressing
  * - Performs error checking on opcode and operands
  */
@@ -128,7 +147,7 @@ void assemble_instruction(const char *line, const char *opcode, int line_num)
     int src_num = 0, dst_num = 0;
     int need_extra_src = 0, need_extra_dst = 0;
 
-    /* Opcode check */
+    /* Check opcode */
     opcode_val = get_opcode_value(opcode);
     if (opcode_val == -1) {
         printf("Error (line %d): Unknown opcode '%s'\n", line_num, opcode);
@@ -136,7 +155,7 @@ void assemble_instruction(const char *line, const char *opcode, int line_num)
         return;
     }
 
-    /* Operand parsing and syntax checks */
+    /* Parse operands and check syntax */
     parse_operands(line, src, dst);
     if ((src[0] == '@') || (dst[0] == '@')) {
         printf("Error (line %d): Illegal register syntax: '%s' or '%s'\n", line_num, src, dst);
@@ -171,7 +190,7 @@ void assemble_instruction(const char *line, const char *opcode, int line_num)
 
     /* Build the encoded word: [opcode][src_addr][dst_addr][src_reg][dst_reg] */
     word = (opcode_val << 8) | (src_addr << 6) | (dst_addr << 4) | (src_reg << 2) | dst_reg;
-    code_array[inst_counter++] = word;
+    if (!safe_store_code(word, line_num)) return;
 
     /* Add extra words if operand is immediate or direct (label) */
     if (need_extra_src) {
@@ -180,31 +199,40 @@ void assemble_instruction(const char *line, const char *opcode, int line_num)
             val = src_num;
         } else {
             label_entry *sym = find_symbol(symbol_table, src);
-            if (sym) val = sym->address;
-            else {
+            if (sym) {
+                val = sym->address;
+                if (sym->attributes & EXTERN_ATTRIBUTE && ext_file) {
+                    fprintf(ext_file, "%s %04d\n", sym->name, inst_counter);
+                }
+            } else {
                 printf("Error (line %d): Undefined label '%s'\n", line_num, src);
                 error_flag = 1;
             }
         }
-        code_array[inst_counter++] = val;
+        if (!safe_store_code(val, line_num)) return;
     }
+
     if (need_extra_dst) {
         int val = 0;
         if (dst_addr == ADDR_IMMEDIATE) {
             val = dst_num;
         } else {
             label_entry *sym = find_symbol(symbol_table, dst);
-            if (sym) val = sym->address;
-            else {
+            if (sym) {
+                val = sym->address;
+                if (sym->attributes & EXTERN_ATTRIBUTE && ext_file) {
+                    fprintf(ext_file, "%s %04d\n", sym->name, inst_counter);
+                }
+            } else {
                 printf("Error (line %d): Undefined label '%s'\n", line_num, dst);
                 error_flag = 1;
             }
         }
-        code_array[inst_counter++] = val;
+        if (!safe_store_code(val, line_num)) return;
     }
 }
 
-/* Writes a 16-bit encoded instruction or data word to the output file */
+/* Writes a 10-bit encoded instruction or data word to the output file */
 void write_encoded_word(FILE *ob_file, int word) {
-    fprintf(ob_file, "%04X\n", word & 0xFFFF);
+    fprintf(ob_file, "%03X\n", word & 0x3FF);
 }

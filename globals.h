@@ -22,7 +22,7 @@
  *   - The maximum allowed length for a line in the assembly source file.
  *   - Used to allocate buffers for reading lines.
  * ----------------------------------------------------------------- */
-#define MAX_LINE_LENGTH 100
+#define MAX_LINE_LENGTH 80
 
 /* -----------------------------------------------------------------
  * MAX_LABEL_LENGTH:

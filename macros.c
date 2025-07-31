@@ -4,17 +4,41 @@
 #include "data_struct.h"
 #include "util.h"
 #include <ctype.h>
-
-#define MAX_LINE_LENGTH 1000  /* Maximum line size to support long macros */
+#include "globals.h"
 
 /*
  * Checks if a line is the start of a macro definition.
- * If so, stores the macro name in macro_name and returns 1.
+ * Handles optional label before the "mcro" keyword.
+ * If found, stores the macro name in macro_name and returns 1.
  * Otherwise, returns 0.
  */
 int is_macro_start(const char *line, char *macro_name) {
-    return sscanf(line, "mcro %s", macro_name) == 1;
+    const char *p = line;
+
+    /* Skip label if present */
+    if (strchr(p, ':') != NULL) {
+        p = strchr(p, ':') + 1;
+    }
+
+    /* Skip whitespace */
+    while (*p == ' ' || *p == '\t') {
+        p++;
+    }
+
+    /* Check for 'mcro' keyword */
+    if (strncmp(p, "mcro", 4) == 0) {
+        p += 4;
+        while (*p == ' ' || *p == '\t') {
+            p++;
+        }
+        sscanf(p, "%31s", macro_name);
+        return 1;
+    }
+
+    return 0;
 }
+
+
 
 /*
  * Checks if a line is the end of a macro definition.
@@ -82,6 +106,8 @@ int mcro_exec(char *filename) {
     node *macro_list = NULL;     /* Linked list of all macros found */
     node *current_macro = NULL;  /* Macro being currently defined */
     int in_macro = 0;            /* Flag: inside macro definition */
+    int line_num = 0;            /* Track input line number for error reporting */
+    int skip_macro = 0;          /* Flag: skip lines until endmcro after duplicate */
 
     in_fp = fopen(filename, "r");
     if (!in_fp) return 0;
@@ -102,8 +128,32 @@ int mcro_exec(char *filename) {
 
     /* Main loop: process each line */
     while (fgets(line, MAX_LINE_LENGTH, in_fp)) {
+
+        if (strchr(line, '\n') == NULL && !feof(in_fp)) {
+            fprintf(stderr, "Error (line %d): Line exceeds maximum allowed length of %d characters.\n", line_num, MAX_LINE_LENGTH);
+            error_flag = 1;
+            /* Optional: skip to end of long line */
+            while (fgetc(in_fp) != '\n' && !feof(in_fp));
+            continue;
+        }
+
+        line_num++;
+
+        /* If skipping macro after duplicate, continue until endmcro */
+        if (skip_macro) {
+            if (is_macro_end(line)) {
+                skip_macro = 0;
+            }
+            continue;
+        }
+
         /* Macro definition start: begin recording macro lines */
         if (!in_macro && is_macro_start(line, macro_name)) {
+            if (find_macro(macro_list, macro_name)) {
+                fprintf(stderr, "Error (line %d): Duplicate macro name '%s'. Skipping this macro definition.\n", line_num, macro_name);
+                skip_macro = 1;
+                continue;
+            }
             in_macro = 1;
             current_macro = create_macro(&macro_list, macro_name);
             continue;
@@ -132,7 +182,7 @@ int mcro_exec(char *filename) {
                 /* If it's a macro call, write macro's lines to output */
                 for (i = 0; i < macro->line_count; i++)
                     fprintf(out_fp, "%s", macro->lines[i]);
-            } else {
+            } else if (opcode[0] != '\0') {
                 /* Not a macro: copy line as-is to output */
                 fprintf(out_fp, "%s", line);
             }

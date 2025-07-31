@@ -1,0 +1,5 @@
+.extern EXTLABEL
+.entry MAIN
+
+MAIN:   mov r1, EXTLABEL
+        stop
