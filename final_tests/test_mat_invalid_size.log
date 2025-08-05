@@ -1,0 +1,4 @@
+Error (line 2): Invalid matrix rows
+----- Assembling: test_mat_invalid_size.as -----
+✅ Macro expansion OK for test_mat_invalid_size.as
+❌ First pass failed for test_mat_invalid_size.as

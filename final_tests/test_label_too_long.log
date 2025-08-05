@@ -1,0 +1,7 @@
+----- Assembling: test_label_too_long.as -----
+✅ Macro expansion OK for test_label_too_long.as
+DEBUG after first_pass: data_counter = 0
+Error (line 2): Unknown opcode 'thislabelnameis'
+----- Done: test_label_too_long.as -----
+  ❌ No output file
+----- Done: test_label_too_long.as -----

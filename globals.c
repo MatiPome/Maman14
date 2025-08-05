@@ -5,7 +5,7 @@
  *   - Tracks the next available instruction address in memory.
  *   - Initialized to 100 (MMN14 convention).
  * ---------------------------------------------------------- */
-int inst_counter = 100;
+int inst_counter = 99;
 
 /* ----------------------------------------------------------
  * DC (Data Counter):

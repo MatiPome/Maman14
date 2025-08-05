@@ -1,0 +1,2 @@
+; test_macro_reserved_name.as
+mov r1, r2

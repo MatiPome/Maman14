@@ -1,0 +1,7 @@
+----- Assembling: test_extern_not_declared.as -----
+✅ Macro expansion OK for test_extern_not_declared.as
+DEBUG after first_pass: data_counter = 0
+Error (line 2): Undefined label 'EXTERN_LABEL'
+----- Done: test_extern_not_declared.as -----
+  ❌ No output file
+----- Done: test_extern_not_declared.as -----

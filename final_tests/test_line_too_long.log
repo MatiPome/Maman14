@@ -1,0 +1,6 @@
+Error (line 1): Line exceeds maximum length of 80 characters.
+----- Assembling: test_line_too_long.as -----
+✅ Macro expansion OK for test_line_too_long.as
+DEBUG after first_pass: data_counter = 0
+DEBUG: in write_object_file, data_counter = 0
+----- Done: test_line_too_long.as -----

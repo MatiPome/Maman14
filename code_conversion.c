@@ -1,6 +1,6 @@
 /* code_conversion.c
  * Converts assembly instructions to encoded machine words.
- * MMN14, ANSI C (C90) - includes instruction memory overflow check.
+ * MMN14, ANSI C (C90) - supports matrix/indexed addressing.
  */
 
 #include <stdio.h>
@@ -10,7 +10,6 @@
 #include "globals.h"
 #include "table.h"
 
-/* Externs from other modules */
 extern int inst_counter;
 extern int data_counter;
 extern int code_array[];
@@ -19,24 +18,28 @@ extern label_entry *symbol_table;
 extern int error_flag;
 extern FILE *ext_file;  /* For writing to .ext output file */
 
-/* Addressing mode definitions */
 #define ADDR_IMMEDIATE 0 /* #number */
 #define ADDR_DIRECT    1 /* label */
+#define ADDR_MATRIX    2 /* label[index][index] */
 #define ADDR_REGISTER  3 /* r0 - r7 */
 
 /* Safely store a word in code_array, with overflow protection */
 static int safe_store_code(int word, int line_num) {
-    if (inst_counter >= MAX_INSTRUCTIONS) {
+    if (inst_counter + 1 >= MAX_INSTRUCTIONS) {
         printf("Error (line %d): instruction memory overflow (max = %d)\n", line_num, MAX_INSTRUCTIONS);
         error_flag = 1;
-        return 0; /* failed */
+        return 0;
     }
-    code_array[inst_counter++] = word & 0x3FF; /* 10 bits only */
-    return 1; /* success */
+    inst_counter++; /* Always increment BEFORE storing */
+    code_array[inst_counter] = word & 0x3FF; /* 10 bits only */
+    printf("DEBUG: Writing word for line %d, inst_counter now %d\n", line_num, inst_counter);
+    return 1;
 }
 
-/* Converts an opcode name to its numerical value.
- * Returns -1 if the opcode is unknown. */
+
+
+
+/* Converts an opcode name to its numerical value. */
 static int get_opcode_value(const char *opcode) {
     if (strcmp(opcode, "mov") == 0) return 0;
     if (strcmp(opcode, "cmp") == 0) return 1;
@@ -57,16 +60,13 @@ static int get_opcode_value(const char *opcode) {
     return -1;
 }
 
-/* Checks if operand is a register (r0-r7, must not begin with '@').
- * Returns register number 0-7, or -1 if not a valid register. */
 static int get_register(const char *s) {
-    if (s[0] == '@') return -1; /* '@' is not allowed in register names */
+    if (s[0] == '@') return -1;
     if (strlen(s) == 2 && s[0] == 'r' && s[1] >= '0' && s[1] <= '7' && s[2] == '\0')
         return s[1] - '0';
     return -1;
 }
 
-/* Trims whitespace from both ends of a string in-place. */
 static void trim(char *s) {
     char *start = s, *end;
     int len;
@@ -81,22 +81,15 @@ static void trim(char *s) {
     }
 }
 
-/* Extracts the source and destination operands from an instruction line.
- * Example: "mov r1, r2" -> src = "r1", dst = "r2"
- * If only one operand exists, src is empty and dst contains the operand.
- */
 static void parse_operands(const char *line, char *src, char *dst) {
     const char *p = line;
     char *comma;
     src[0] = '\0';
     dst[0] = '\0';
 
-    /* Skip whitespace and opcode */
     while (*p && isspace((unsigned char)*p)) p++;
     while (*p && !isspace((unsigned char)*p)) p++;
     while (*p && isspace((unsigned char)*p)) p++;
-
-    /* No operand case */
     if (*p == '\0' || *p == '\n') return;
 
     {
@@ -105,7 +98,6 @@ static void parse_operands(const char *line, char *src, char *dst) {
         operands[99] = '\0';
         comma = strchr(operands, ',');
         if (comma) {
-            /* Split into src and dst */
             *comma = '\0';
             first = operands;
             second = comma + 1;
@@ -114,7 +106,6 @@ static void parse_operands(const char *line, char *src, char *dst) {
             strcpy(src, first);
             strcpy(dst, second);
         } else {
-            /* Only one operand (destination) */
             first = operands;
             while (*first && isspace((unsigned char)*first)) first++;
             strcpy(dst, first);
@@ -125,18 +116,47 @@ static void parse_operands(const char *line, char *src, char *dst) {
     }
 }
 
-/* Determines the addressing mode of an operand (immediate, direct, register). */
+/* Checks if operand is a matrix (label[reg][reg]), sets out_label, out_reg1, out_reg2 */
+static int is_matrix_operand(const char *operand, char *out_label, int *out_reg1, int *out_reg2) {
+    int len, r1 = -1, r2 = -1;
+    char label[MAX_LABEL_LENGTH+1];
+    const char *p = strchr(operand, '[');
+    if (!p) return 0; /* not a matrix */
+    len = p - operand;
+    if (len > MAX_LABEL_LENGTH) return 0;
+    strncpy(label, operand, len);
+    label[len] = '\0';
+    /* Strict match: [rX][rY] */
+    if (sscanf(p, "[r%d][r%d]", &r1, &r2) == 2 &&
+        r1 >= 0 && r1 <= 7 && r2 >= 0 && r2 <= 7) {
+        strcpy(out_label, label);
+        *out_reg1 = r1;
+        *out_reg2 = r2;
+        return 1;
+    }
+    return 0;
+}
+
+/* Determines addressing mode: immediate, direct, matrix, register */
 static int get_addressing(const char *operand) {
+    char label[MAX_LABEL_LENGTH+1];
+    int r1, r2;
     if (operand[0] == '#') return ADDR_IMMEDIATE;
     if (get_register(operand) != -1) return ADDR_REGISTER;
+    if (is_matrix_operand(operand, label, &r1, &r2)) return ADDR_MATRIX;
     return ADDR_DIRECT;
 }
 
-/* Encodes an instruction:
- * - Writes main instruction word to code_array (using safe_store_code)
- * - Adds extra words for immediate values or direct (label) addressing
- * - Performs error checking on opcode and operands
- */
+/* Extract base label from operand (e.g. M1[r2][r7] -> M1) */
+static void extract_base_label(const char* operand, char* out_label) {
+    int i = 0;
+    while (operand[i] && operand[i] != '[' && i < MAX_LABEL_LENGTH) {
+        out_label[i] = operand[i];
+        i++;
+    }
+    out_label[i] = '\0';
+}
+
 void assemble_instruction(const char *line, const char *opcode, int line_num)
 {
     int opcode_val;
@@ -146,8 +166,13 @@ void assemble_instruction(const char *line, const char *opcode, int line_num)
     int src_reg = 0, dst_reg = 0;
     int src_num = 0, dst_num = 0;
     int need_extra_src = 0, need_extra_dst = 0;
+    char label[MAX_LABEL_LENGTH+1];
+    int mreg1, mreg2;
+    label_entry *sym;
+    int val;
 
-    /* Check opcode */
+    printf("assemble_instruction CALLED: '%s', opcode: '%s', line: %d\n", line, opcode, line_num);
+
     opcode_val = get_opcode_value(opcode);
     if (opcode_val == -1) {
         printf("Error (line %d): Unknown opcode '%s'\n", line_num, opcode);
@@ -155,8 +180,8 @@ void assemble_instruction(const char *line, const char *opcode, int line_num)
         return;
     }
 
-    /* Parse operands and check syntax */
     parse_operands(line, src, dst);
+
     if ((src[0] == '@') || (dst[0] == '@')) {
         printf("Error (line %d): Illegal register syntax: '%s' or '%s'\n", line_num, src, dst);
         error_flag = 1;
@@ -171,6 +196,8 @@ void assemble_instruction(const char *line, const char *opcode, int line_num)
             need_extra_src = 1;
         } else if (src_addr == ADDR_REGISTER) {
             src_reg = get_register(src);
+        } else if (src_addr == ADDR_MATRIX) {
+            need_extra_src = 3; /* label, r1, r2 */
         } else {
             need_extra_src = 1;
         }
@@ -183,56 +210,103 @@ void assemble_instruction(const char *line, const char *opcode, int line_num)
             need_extra_dst = 1;
         } else if (dst_addr == ADDR_REGISTER) {
             dst_reg = get_register(dst);
+        } else if (dst_addr == ADDR_MATRIX) {
+            need_extra_dst = 3;
         } else {
             need_extra_dst = 1;
         }
     }
 
-    /* Build the encoded word: [opcode][src_addr][dst_addr][src_reg][dst_reg] */
     word = (opcode_val << 8) | (src_addr << 6) | (dst_addr << 4) | (src_reg << 2) | dst_reg;
+    printf("DEBUG: Writing main word for line %d, inst_counter = %d\n", line_num, inst_counter);
     if (!safe_store_code(word, line_num)) return;
 
-    /* Add extra words if operand is immediate or direct (label) */
+    /* Extra words for source */
     if (need_extra_src) {
-        int val = 0;
         if (src_addr == ADDR_IMMEDIATE) {
-            val = src_num;
-        } else {
-            label_entry *sym = find_symbol(symbol_table, src);
+            printf("DEBUG: Writing src immediate for line %d, value=%d, inst_counter=%d\n", line_num, src_num, inst_counter);
+            if (!safe_store_code(src_num, line_num)) return;
+        } else if (src_addr == ADDR_MATRIX) {
+            if (is_matrix_operand(src, label, &mreg1, &mreg2)) {
+                sym = find_symbol(symbol_table, label);
+                val = 0;
+                if (sym) {
+                    val = sym->address;
+                    if (sym->attributes & EXTERN_ATTRIBUTE && ext_file)
+                        fprintf(ext_file, "%s %04d\n", sym->name, inst_counter);
+                } else {
+                    printf("Error (line %d): Undefined label '%s'\n", line_num, label);
+                    error_flag = 1;
+                }
+                printf("DEBUG: Writing src matrix label for line %d, val=%d, inst_counter=%d\n", line_num, val, inst_counter);
+                if (!safe_store_code(val, line_num)) return;
+                printf("DEBUG: Writing src matrix reg1 for line %d, mreg1=%d, inst_counter=%d\n", line_num, mreg1, inst_counter);
+                if (!safe_store_code(mreg1, line_num)) return;
+                printf("DEBUG: Writing src matrix reg2 for line %d, mreg2=%d, inst_counter=%d\n", line_num, mreg2, inst_counter);
+                if (!safe_store_code(mreg2, line_num)) return;
+            }
+        } else if (src_addr == ADDR_DIRECT) {
+            char label_only[MAX_LABEL_LENGTH+1];
+            extract_base_label(src, label_only);
+            sym = find_symbol(symbol_table, label_only);
+            val = 0;
             if (sym) {
                 val = sym->address;
-                if (sym->attributes & EXTERN_ATTRIBUTE && ext_file) {
+                if (sym->attributes & EXTERN_ATTRIBUTE && ext_file)
                     fprintf(ext_file, "%s %04d\n", sym->name, inst_counter);
-                }
             } else {
-                printf("Error (line %d): Undefined label '%s'\n", line_num, src);
+                printf("Error (line %d): Undefined label '%s'\n", line_num, label_only);
                 error_flag = 1;
             }
+            printf("DEBUG: Writing src direct for line %d, val=%d, inst_counter=%d\n", line_num, val, inst_counter);
+            if (!safe_store_code(val, line_num)) return;
         }
-        if (!safe_store_code(val, line_num)) return;
     }
 
+    /* Extra words for destination */
     if (need_extra_dst) {
-        int val = 0;
         if (dst_addr == ADDR_IMMEDIATE) {
-            val = dst_num;
-        } else {
-            label_entry *sym = find_symbol(symbol_table, dst);
+            printf("DEBUG: Writing dst immediate for line %d, value=%d, inst_counter=%d\n", line_num, dst_num, inst_counter);
+            if (!safe_store_code(dst_num, line_num)) return;
+        } else if (dst_addr == ADDR_MATRIX) {
+            if (is_matrix_operand(dst, label, &mreg1, &mreg2)) {
+                sym = find_symbol(symbol_table, label);
+                val = 0;
+                if (sym) {
+                    val = sym->address;
+                    if (sym->attributes & EXTERN_ATTRIBUTE && ext_file)
+                        fprintf(ext_file, "%s %04d\n", sym->name, inst_counter);
+                } else {
+                    printf("Error (line %d): Undefined label '%s'\n", line_num, label);
+                    error_flag = 1;
+                }
+                printf("DEBUG: Writing dst matrix label for line %d, val=%d, inst_counter=%d\n", line_num, val, inst_counter);
+                if (!safe_store_code(val, line_num)) return;
+                printf("DEBUG: Writing dst matrix reg1 for line %d, mreg1=%d, inst_counter=%d\n", line_num, mreg1, inst_counter);
+                if (!safe_store_code(mreg1, line_num)) return;
+                printf("DEBUG: Writing dst matrix reg2 for line %d, mreg2=%d, inst_counter=%d\n", line_num, mreg2, inst_counter);
+                if (!safe_store_code(mreg2, line_num)) return;
+            }
+        } else if (dst_addr == ADDR_DIRECT) {
+            char label_only[MAX_LABEL_LENGTH+1];
+            extract_base_label(dst, label_only);
+            sym = find_symbol(symbol_table, label_only);
+            val = 0;
             if (sym) {
                 val = sym->address;
-                if (sym->attributes & EXTERN_ATTRIBUTE && ext_file) {
+                if (sym->attributes & EXTERN_ATTRIBUTE && ext_file)
                     fprintf(ext_file, "%s %04d\n", sym->name, inst_counter);
-                }
             } else {
-                printf("Error (line %d): Undefined label '%s'\n", line_num, dst);
+                printf("Error (line %d): Undefined label '%s'\n", line_num, label_only);
                 error_flag = 1;
             }
+            printf("DEBUG: Writing dst direct for line %d, val=%d, inst_counter=%d\n", line_num, val, inst_counter);
+            if (!safe_store_code(val, line_num)) return;
         }
-        if (!safe_store_code(val, line_num)) return;
     }
 }
 
-/* Writes a 10-bit encoded instruction or data word to the output file */
+
 void write_encoded_word(FILE *ob_file, int word) {
     fprintf(ob_file, "%03X\n", word & 0x3FF);
 }

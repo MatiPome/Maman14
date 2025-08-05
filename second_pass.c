@@ -136,11 +136,48 @@ void second_pass(const char *filename)
     ext_file = fopen(ext_filename, "w");
 
     rewind(am_file);
-    while (fgets(line, MAX_LINE_LENGTH, am_file)) {
+    line[0] = '\0'; /* make sure buffer is clear */
+
+    while (1) {
+        char *fgets_result;
+        fgets_result = fgets(line, MAX_LINE_LENGTH, am_file);
+
+        if (!fgets_result) {
+            /* Handle last line if not followed by a newline */
+            if (line[0] != '\0') {
+                line_num++;
+                if (!is_empty_or_comment(line)) {
+                    process_instruction_line(line, line_num);
+                }
+            }
+            break;
+        }
+
         line_num++;
+        /* Remove trailing newline if present */
+        {
+            int len = strlen(line);
+            if (len > 0 && line[len-1] == '\n') {
+                line[len-1] = '\0';
+            }
+        }
+
         if (is_empty_or_comment(line)) continue;
         process_instruction_line(line, line_num);
+
+        line[0] = '\0'; /* clear for possible partial final read */
     }
+
+
+    /* Handle the last line if the file does not end with a newline */
+    if (line[0] != '\0' && line[strlen(line)-1] != '\n') {
+        /* Make sure we didn't already process it */
+        if (!is_empty_or_comment(line)) {
+            line_num++;
+            process_instruction_line(line, line_num);
+        }
+    }
+
 
     /*
      * If any errors were detected during the pass,
@@ -194,22 +231,31 @@ assemble_instruction(inst_line, opcode, line_num);
 
 /*
  * Writes the object code (.ob) file.
- * The first line contains the code/data lengths. Each following line is a 10/12/16-bit word.
+ * The first line contains the code/data lengths.
+ * Code words are written from address 100 to inst_counter-1.
+ * Data words are written starting at inst_counter.
  */
 void write_object_file(void)
 {
     int i;
-    int start = 100; /* Per MMN14 spec, code starts at address 100 */
-    printf("DEBUG: in write_object_file, data_counter = %d\n", data_counter);
-    fprintf(ob_file, "%d %d\n", inst_counter - start, data_counter);
+    int start = 100;
+    int code_len = inst_counter - start + 1;
+
+    fprintf(ob_file, "%d %d\n", code_len, data_counter);
+
+    printf("DEBUG: inst_counter at write_object_file: %d\n", inst_counter);
+
+    /* This is the critical fix: this will always write from 100 up to inst_counter-1 */
     for (i = start; i < inst_counter; i++) {
         write_encoded_word(ob_file, code_array[i]);
-
     }
+
     for (i = 0; i < data_counter; i++) {
         write_encoded_word(ob_file, data_memory[i]);
     }
 }
+
+
 
 /*
  * Writes the entry symbols (if any) to the .ent file.

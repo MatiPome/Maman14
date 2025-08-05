@@ -1,0 +1,4 @@
+Error (line 2): Missing number in .data
+----- Assembling: test_data_consecutive_commas.as -----
+✅ Macro expansion OK for test_data_consecutive_commas.as
+❌ First pass failed for test_data_consecutive_commas.as

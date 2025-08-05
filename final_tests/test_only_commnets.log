@@ -1,0 +1,5 @@
+----- Assembling: test_only_commnets.as -----
+✅ Macro expansion OK for test_only_commnets.as
+DEBUG after first_pass: data_counter = 0
+DEBUG: in write_object_file, data_counter = 0
+----- Done: test_only_commnets.as -----

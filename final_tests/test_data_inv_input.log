@@ -1,0 +1,4 @@
+Error (line 2): Invalid number in .data
+----- Assembling: test_data_inv_input.as -----
+✅ Macro expansion OK for test_data_inv_input.as
+❌ First pass failed for test_data_inv_input.as

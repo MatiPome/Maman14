@@ -1,0 +1,4 @@
+Error (line 3): Missing number in .data
+----- Assembling: test_multiple_errors.as -----
+✅ Macro expansion OK for test_multiple_errors.as
+❌ First pass failed for test_multiple_errors.as

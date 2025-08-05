@@ -1,0 +1,7 @@
+----- Assembling: test_invalid_opcode.as -----
+✅ Macro expansion OK for test_invalid_opcode.as
+DEBUG after first_pass: data_counter = 0
+Error (line 2): Unknown opcode 'movv'
+----- Done: test_invalid_opcode.as -----
+  ❌ No output file
+----- Done: test_invalid_opcode.as -----

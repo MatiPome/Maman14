@@ -1,0 +1,5 @@
+----- Assembling: test_string_empty.as -----
+✅ Macro expansion OK for test_string_empty.as
+DEBUG after first_pass: data_counter = 1
+DEBUG: in write_object_file, data_counter = 1
+----- Done: test_string_empty.as -----

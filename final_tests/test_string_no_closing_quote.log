@@ -1,0 +1,4 @@
+Error (line 3): Duplicate label
+----- Assembling: test_string_no_closing_quote.as -----
+✅ Macro expansion OK for test_string_no_closing_quote.as
+❌ First pass failed for test_string_no_closing_quote.as
