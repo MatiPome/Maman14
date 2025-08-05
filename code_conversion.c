@@ -9,6 +9,7 @@
 #include <ctype.h>
 #include "globals.h"
 #include "table.h"
+#include "util.h"
 
 extern int inst_counter;
 extern int data_counter;
@@ -30,8 +31,9 @@ static int safe_store_code(int word, int line_num) {
         error_flag = 1;
         return 0;
     }
-    inst_counter++; /* Always increment BEFORE storing */
+
     code_array[inst_counter] = word & 0x3FF; /* 10 bits only */
+    inst_counter++;
     printf("DEBUG: Writing word for line %d, inst_counter now %d\n", line_num, inst_counter);
     return 1;
 }
@@ -308,5 +310,7 @@ void assemble_instruction(const char *line, const char *opcode, int line_num)
 
 
 void write_encoded_word(FILE *ob_file, int word) {
-    fprintf(ob_file, "%03X\n", word & 0x3FF);
+    print_base4(ob_file, word & 0x3FF, 5);
+    fprintf(ob_file, "\n");
 }
+

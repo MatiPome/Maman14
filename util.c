@@ -42,3 +42,14 @@ char *add_new_file(const char *filename, const char *extension) {
         return new_name;
     }
 }
+
+void print_base4(FILE *f, int n, int digits) {
+    char buf[8];
+    int i;
+    for (i = digits - 1; i >= 0; i--) {
+        buf[digits - 1 - i] = "abcd"[(n >> (i * 2)) & 0x3];
+    }
+    buf[digits] = '\0';
+    fprintf(f, "%s", buf);
+}
+

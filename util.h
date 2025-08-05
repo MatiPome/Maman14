@@ -16,4 +16,7 @@
  */
 char *add_new_file(const char *filename, const char *extension);
 
+void print_base4(FILE *f, int n, int digits);
+
+
 #endif /* UTIL_H */

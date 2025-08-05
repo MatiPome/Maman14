@@ -4,13 +4,16 @@
 #include "globals.h"
 #include "table.h"
 #include "code_conversion.h"
-#include "Errors.h"
+#include "errors.h"
 #include "util.h"
 #include <ctype.h>
 
 
 #define MAX_OPCODE_LENGTH 16
 #define MAX_LABEL_LENGTH 32
+
+
+
 
 /*
  * Returns 1 if the line is empty or a comment, 0 otherwise.
@@ -241,19 +244,23 @@ void write_object_file(void)
     int start = 100;
     int code_len = inst_counter - start + 1;
 
-    fprintf(ob_file, "%d %d\n", code_len, data_counter);
+    /* Header in base 4 */
+    print_base4(ob_file, code_len, 3);
+    fprintf(ob_file, " ");
+    print_base4(ob_file, data_counter, 2);
+    fprintf(ob_file, "\n");
 
-    printf("DEBUG: inst_counter at write_object_file: %d\n", inst_counter);
-
-    /* This is the critical fix: this will always write from 100 up to inst_counter-1 */
-    for (i = start; i < inst_counter; i++) {
+    /* Write code words in base 4 */
+    for (i = start; i <= inst_counter; i++) {
         write_encoded_word(ob_file, code_array[i]);
     }
 
+    /* Write data words in base 4 */
     for (i = 0; i < data_counter; i++) {
         write_encoded_word(ob_file, data_memory[i]);
     }
 }
+
 
 
 
